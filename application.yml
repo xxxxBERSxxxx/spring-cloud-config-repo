@@ -1,0 +1,50 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      routes:
+        - id: user-service
+          uri: lb://USER-SERVICE
+          predicates:
+            - Path=/api/users/**
+          filters:
+            - RewritePath=/api/(?<segment>.*), /$\{segment}
+            - CircuitBreaker=userServiceCircuitBreaker
+            - AddRequestHeader=X-Request-Gateway, API-Gateway
+        - id: fallback
+          uri: lb://USER-SERVICE
+          predicates:
+            - Path=/fallback
+          filters:
+            - SetStatus=503
+            - SetResponseHeader=Content-Type, application/json
+            - SetResponseBody={"status": "SERVICE_UNAVAILABLE", "message": "Service is currently unavailable"}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      userServiceCircuitBreaker:
+        failureRateThreshold: 50
+        minimumNumberOfCalls: 5
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        waitDurationInOpenState: 5s
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka
+    healthcheck:
+      enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,gateway
+  endpoint:
+    health:
+      show-details: always
